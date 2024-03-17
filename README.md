@@ -31,7 +31,7 @@ Once the agent has presented the movie to the user, the agent receives the user'
 Then, we store the data and the reward of the recommended movie as X and y. The agent history is available for the agent to gain knowledge and improve their predictions.
 When a movie has been recommended to a specific user, the movie is removed from the view history as we do not want to keep recommending the same movie even if the user appreciated it.
 
-Initially, we will employ TETS and TEUCB to evaluate how well tree ensemble methods perform on the MovieLens100k dataset. Full algorithm specifications and prior results are available at https://arxiv.org/abs/2402.06963.
+Initially, we will employ TETS and TEUCB to evaluate how well tree ensemble methods perform on the MovieLens100k dataset. Full algorithm specifications and results for other datasets are available at https://arxiv.org/abs/2402.06963.
 
 
 
