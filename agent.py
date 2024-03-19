@@ -41,9 +41,3 @@ class Agent(object):
     def pick_action(self, observation):
         """Select an action based upon the policy + observation."""
         pass
-
-    def get_iteration_data(self):
-        return {}
-
-    def auxiliary_output(self, auxiliary_output_path, job_id, observation, action, reward):
-        pass
