@@ -5,20 +5,7 @@ All agents should inherit from the Agent class and work from there.
 
 from __future__ import division
 from __future__ import print_function
-
 import logging
-
-import numpy as np
-
-
-def random_argmax(vector):
-    """Helper function to select argmax at random... not just first one."""
-    index = np.random.choice(np.where(vector == vector.max())[0])
-    return index
-
-
-##############################################################################
-
 
 class Agent(object):
     """Base class for all bandit agents."""
