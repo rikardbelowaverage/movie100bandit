@@ -32,13 +32,13 @@ def get_data():
     movie_data = pd.read_csv('ml-100k/u.item', sep='|', header=None, encoding='latin1', index_col=False,
                     names=movie_features)
     movie_data.movie_id -= 1 # make this column zero-indexed
-    print(movie_data.columns)
+    #print(movie_data.columns)
     columns_to_drop = ['video_release_date', 'imdb_url']
     movie_data=movie_data.drop(columns=columns_to_drop) # all instances had NaN
     movie_data['movie_title'] = movie_data['movie_title'].astype("category").cat.codes.astype(int)
     for col in movie_data.columns:
         movie_data[col] = movie_data[col].astype("category").cat.codes.astype(int)
-    print(movie_data.describe())
+    #print(movie_data.describe())
     # Get user ratings
     user_rating_df = pd.read_csv('ml-100k/u.data', sep='\t', header=None, names=['user_id','movie_id','rating','timestamp'])
     user_rating_df.user_id -= 1 # make this column zero-indexed
@@ -52,6 +52,8 @@ def get_data():
     user_data.user_id -= 1 # make this column zero-indexed
     user_data['user_id'] = user_data['user_id'].astype("category").cat.codes.astype(int)
     user_data['age'] = user_data['age'].astype(int)
+    user_data["age_group"] = pd.cut(x=user_data['age'], bins=[0,20,40,60,100], labels=["young","middle_aged","golden_age","old_but_gold"])
+    user_data["age_group"] = user_data["age_group"].astype("category").cat.codes.astype(int)
     user_data['gender'] = user_data['gender'].astype("category").cat.codes.astype(int)
     user_data['work'] = user_data['work'].astype("category").cat.codes.astype(int)
     user_data['zipcode'] = user_data['zipcode'].astype(str).str[0]

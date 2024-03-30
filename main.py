@@ -1,13 +1,15 @@
 from read_data import get_data
 import numpy as np
 import pandas as pd
+import xgboost as xgb
 import random
 from helpers import get_regret
 from xgboost import XGBRegressor
-from agents import TETS
-import matplotlib.pyplot as plt
+from agents import TETS,XGBGreedy
+from utils.setup_logger import logger
+from utils.create_graphs import regret_plot
+from sklearn.model_selection import train_test_split
 import argparse
-import logging
 
 #TODO make config handler
 parser = argparse.ArgumentParser()
@@ -22,8 +24,6 @@ if args.time_steps is not None:
 else:
     timesteps = 10000
 
-logging.info("Initializing experiment for " +str(timesteps) + " timesteps")
-
 X_history = []
 y_history = []
 y_optimal = []
@@ -31,15 +31,15 @@ regrets = []
 
 if __name__ == "__main__":
     #return movie_df, rating_df, user_df
-    agentz = [TETS()]
-    for a in agentz:
+    agent_list = [TETS()]
+    for current_agent in agent_list:
         df_movies, df_user_ratings, df_user_data = get_data()
         sampled_users = df_user_data.sample(n=timesteps, random_state=1, replace=True)
-        model = a
+        model = current_agent
 
         for t in range(0,timesteps):
             if t%100==0:
-                print("timestep: "+str(t))
+                logger.info("timestep: "+str(t))
             # Get contextual data regarding the current user
             while True:
                 current_user = sampled_users.iloc[t]
@@ -47,8 +47,8 @@ if __name__ == "__main__":
                 current_user_rated_movies = df_movies[df_movies['movie_id'].isin(current_user_ratings.movie_id.values)]
 
                 if (len(current_user_rated_movies)<=1):
+                    logger.info("Resampling a new user")
                     #TODO drop the current user from sampled_users df
-                    logging.info("User has no more rated movies, sampling a new user")
                     t = random.randint(0,len(df_user_data))
                 else:
                     break
@@ -64,25 +64,30 @@ if __name__ == "__main__":
             X = np.concatenate((np.tile(user_features,(rows,1)),action_features), axis=1)
             # y are the rewards for each actions, not presented to the agent.
             y = ratings.reshape(rows,1)
-
+            logger.debug("X.shape is:"+str(X.shape))
             action = model.pick_action(observations=X)
-            model.update_observations(observation=X[action],action=action,reward=y[action])
+            logger.debug('Action:'+str(action))
+            model.update_observations(observation=X[action,:],action=action,reward=y[action])
 
             max_reward = ratings[ratings.argmax(axis=0)]
             y_optimal.append(max_reward)
-            print("Recommended movie had rating {}, most liked movie had rating {}, regret for timestep {} is therefore {}".format(y[action],max_reward,t,max_reward-y[action]))
             regret = get_regret(max_reward,y[action])
             regrets.append(regret)
-
+            #print("Recommended movie had rating {}, most liked movie had rating {}, regret for timestep {} is therefore {}".format(y[action],max_reward,t,regret))
             #remove the recommended movie, movie_id, from rated movies by user_id
             recommended_movie_id = current_user_rated_movies.iloc[action].movie_id
             df_user_ratings = df_user_ratings.loc[~((df_user_ratings['movie_id'] == recommended_movie_id) & (df_user_ratings['user_id']==current_user.user_id))] 
 
+        regret_plot(timesteps,regrets,result_path)
 
-        ts = range(0,timesteps)
-        plt.plot(ts,regrets,'.',linestyle='')
-        plt.savefig(result_path+'/instant_regret.png')
-        plt.clf()
+        arr = np.load('sample_data.npy')
+        data = arr[:,:-1]
+        labels = arr[:,-1]
+        data_train, data_test, labels_train, labels_test = train_test_split(data, labels, test_size=0.20, random_state=42)
 
-        plt.plot(ts,np.cumsum(regrets))
-        plt.savefig(result_path+'/cum_regret.png')
+        X_d = xgb.DMatrix(data_test, feature_types=model.feature_types, enable_categorical=True)
+        pred = model.predict(X_d)
+        MSE = np.square(np.subtract(labels_test,pred)).mean()
+        logger.info('MSE:'+str(MSE))
+        RMSE = np.sqrt(MSE)
+        logger.info('RMSE:'+str(RMSE))

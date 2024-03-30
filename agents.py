@@ -1,4 +1,3 @@
-import logging
 import time
 import json
 import random
@@ -8,22 +7,20 @@ import numpy as np
 import xgboost as xgb
 from agent import Agent
 from utils.utils_xgboost import get_leafs
-
-
-
+from utils.setup_logger import logger
 
 class TETS(Agent):
     def __init__(self, use_cuda=False, epsilon=0.05,
                  exploration_factor=1,
                 max_depth=6, n_estimators=100,
-                eta=0.3, gamma=0, xgb_lambda=1.0):
-        print("initializing agent")
+                eta=0.3, gamma=1, xgb_lambda=1):
+        logger.info("initializing agent")
         self.t = 1
         self.n_estimators = n_estimators
         self.max_depth = max_depth
-        self.observations = []
+        self.observation_history = []
         self.rewards = []
-        self.feature_types = ['q' for _ in range(1)]+['c' for _ in range(22)]
+        self.feature_types = ['q' for _ in range(1)]+['c' for _ in range(23)] #TODO maybe make these available from read_data.py
         self.lr = eta
         self.actions = []
         self.exploration_factor = exploration_factor
@@ -36,22 +33,21 @@ class TETS(Agent):
         return "This is the TETS contextual multi-armed bandit"
     
     def train_model(self, observations, rewards):
-        #print("training model.....")
-        X = np.array(observations)
-        y = np.array(rewards).reshape(len(rewards),1)
-        #print("Observations shape : {} rewards shape : {}".format(X.shape,y.shape))
+        self.X = np.array(observations)
+        self.y = np.array(rewards).reshape(len(rewards),1)
+        logger.debug("Observations shape : {} rewards shape : {}".format(self.X.shape,self.y.shape))
         start = time.time()
-        Xy = xgb.DMatrix(X, y, feature_types=self.feature_types, enable_categorical=True)
+        Xy = xgb.DMatrix(self.X, self.y, feature_types=self.feature_types, enable_categorical=True)
         self.model = xgb.train(params = self.model_parameters, dtrain=Xy, num_boost_round=self.n_estimators)
 
         leaf_scores = self.model.get_dump(with_stats=True, dump_format='json')
         
-        #gets residuals for first tree which has constant prediction s
-        residuals_array = np.array(y - 0.5, dtype="float64")
+        #gets residuals for first tree which has constant prediction some constant value
+        residuals_array = np.array(self.y - 0.5, dtype="float64")
         
         json_trees = [json.loads(leaf_scores[i]) for i in range(self.n_estimators)]
         self.leaves_per_tree = []
-        X = xgb.DMatrix(X, feature_types=self.feature_types, enable_categorical=True)
+        self.X_d = xgb.DMatrix(self.X, feature_types=self.feature_types, enable_categorical=True)
 
         # Iterate through all individual trees in the sample and collect the leavs
         for idx, tree in enumerate(json_trees):
@@ -62,19 +58,12 @@ class TETS(Agent):
                 break
             else:
                 self.leaves_per_tree.append(get_leafs(tree))
-                """
-                try:
-                    print(get_leafs(tree).__sizeof__())
-                    print(get_leafs(tree)[1])#.__sizeof__())
-                except:
-                    print("Exception: get_leafs(tree)")
-                """
-            pred = self.model.predict(X, iteration_range=(0,idx+1)).reshape((len(self.rewards),1))
-            logging.info('Staged pred ' + str(idx) + ': ' + str(pred))
-            logging.info('Target ' + str(idx) + ': ' + str(self.rewards))
+            pred = self.model.predict(self.X_d, iteration_range=(0,idx+1)).reshape((len(self.rewards),1))
+            logger.debug('Staged pred ' + str(idx) + ': ' + str(pred))
+            logger.debug('Target ' + str(idx) + ': ' + str(self.rewards))
             residuals_array = np.append(residuals_array, self.rewards - pred, axis=1)
         
-        individual_preds = self.model.predict(X, pred_leaf=True)
+        individual_preds = self.model.predict(self.X_d, pred_leaf=True)
         leaf_of_data = np.array(individual_preds)
 
         for i in range(len(self.leaves_per_tree)):
@@ -88,14 +77,16 @@ class TETS(Agent):
                 #print("leaf_variance:"+str(row['residual'] * self.lr**2))
 
         end = time.time()
-        print("model trained in {:.3} seconds".format(end-start))
+        logger.info("model trained in {:.3} seconds".format(end-start))
             
     def update_observations(self, observation, action, reward):
-        self.observations.append(observation)
+        logger.debug("Observation is"+str(observation))
+        logger.debug('Reward is'+str(reward))
+        self.observation_history.append(observation)
         self.rewards.append(reward)
         # add some if-statement to avoid training model at each iteration
-        if self.t==9 or self.t%100==0:
-            self.train_model(self.observations,self.rewards)
+        if self.t==99 or self.t%100==0:
+            self.train_model(self.observation_history,self.rewards)
         self.t += 1
 
     def get_samples(self, X):
@@ -106,34 +97,54 @@ class TETS(Agent):
         mu_hat = self.model.predict(X)
         individual_preds = self.model.predict(X, pred_leaf=True)
         leaf_assignments = np.array(individual_preds)
-        n_samples_total = len(self.rewards)
-        variance_of_mean_per_assigned_leaf = np.array([self.leaves_per_tree[i][leaf_assignments[0][i]]["leaf_variance"] / self.leaves_per_tree[i][leaf_assignments[0][i]]["cover"] for i in range(len(self.leaves_per_tree))])
-        total_variance_of_mean = np.sum(variance_of_mean_per_assigned_leaf)
 
-        return mu_hat + np.sqrt(total_variance_of_mean) * np.random.randn()     
+        logger.debug('Individual predictions shape'+str(individual_preds.shape))
+        logger.debug('Leaf assignments'+str(leaf_assignments))
+        logger.debug(str(np.shape(leaf_assignments)))
+        n_samples_total = len(self.rewards)
+        logger.debug(str(self.leaves_per_tree))
+        logger.debug(str(np.shape(self.leaves_per_tree)))
+        logger.debug(type(self.leaves_per_tree))
+
+        variance_of_mean_per_assigned_leaf = [np.array([self.leaves_per_tree[i][leaf_assignments[j,i]].get('leaf_variance') 
+                                  for j in range(len(leaf_assignments))]) for i in range(len(self.leaves_per_tree))]
+        
+        covers_of_mean_per_assigned_leaf = [np.array([self.leaves_per_tree[i][leaf_assignments[j,i]].get('cover') 
+                                  for j in range(len(leaf_assignments))]) for i in range(len(self.leaves_per_tree))]
+
+        logger.debug('Variance term:'+str(np.sqrt(np.array(variance_of_mean_per_assigned_leaf)/np.array(covers_of_mean_per_assigned_leaf))))
+        logger.debug('Variance:'+str(np.array(variance_of_mean_per_assigned_leaf)))
+        logger.debug('Covers:'+str(np.array(covers_of_mean_per_assigned_leaf)))
+        logger.debug('Variance shape'+str(np.array(variance_of_mean_per_assigned_leaf).shape))
+        logger.debug('Covers shape'+str(np.array(covers_of_mean_per_assigned_leaf).shape))
+        logger.debug('mu_hat shape'+str(mu_hat.shape))
+        logger.debug('predict'+str(mu_hat + np.sqrt(np.sum(np.array(variance_of_mean_per_assigned_leaf)/np.array(covers_of_mean_per_assigned_leaf),axis=0).T)*np.random.randn(mu_hat.shape[0])))
+        return mu_hat + np.sqrt(np.sum(np.array(variance_of_mean_per_assigned_leaf)/np.array(covers_of_mean_per_assigned_leaf),axis=0).T)*np.random.randn(mu_hat.shape[0])      
 
     def pick_action(self, observations):
         arms, _ = observations.shape
-        if (self.t<10) or (random.uniform(0,1)<(1/self.t)): #initial random pulls
+        if (self.t<100): #initial random pulls
             return random.randint(0,arms-1)
         else: # sample rewards for all possible actions, np.random.choice break ties if more than one option is considered optimal
+            logger.debug('observation shape'+str(observations.shape))
             samples = self.get_samples(observations)
-            print(samples)
+            
+            logger.debug('samples shape:'+str(samples.shape))
+            logger.debug('samples:'+str(samples))
             action = np.random.choice(np.flatnonzero(samples==samples.max()))
+            logger.debug('action:'+str(action))
             self.actions.append(action)
-            if self.t%9000==0:
-                print(self.actions)
             return action
 
 class XGBGreedy(Agent):
     def __init__(self, use_cuda=False, epsilon=0.05,
                 max_depth=6, n_estimators=100,
                 gamma=0, xgb_lambda=1.0, eta=0.3):
-        print("initializing agent")
+        logger.info("initializing agent")
         self.t = 1
         self.n_estimators = n_estimators
         self.max_depth = max_depth
-        self.observations = []
+        self.observation_history = []
         self.rewards = []
         self.feature_types = ['q' for _ in range(1)]+['c' for _ in range(22)]
         self.actions = []
@@ -152,11 +163,14 @@ class XGBGreedy(Agent):
         self.model = xgb.train(params = self.model_parameters, dtrain=Xy, num_boost_round=self.n_estimators)
             
     def update_observations(self, observation, action, reward):
-        self.observations.append(observation)
+        self.observation_history.append(observation)
         self.rewards.append(reward)
         # add some if-statement to avoid training model at each iteration
         if self.t==9 or self.t%100==0:
-            self.train_model(self.observations,self.rewards)
+            logger.info('Training model')
+            logger.info('Observation history'+str(len(self.observation_history)))
+            logger.info('Length rewards'+str(len(self.rewards)))
+            self.train_model(self.observation_history,self.rewards)
         self.t += 1
 
     def get_samples(self, X):
