@@ -10,17 +10,19 @@ from utils.utils_xgboost import get_leafs
 from utils.setup_logger import logger
 
 class TETS(Agent):
-    def __init__(self, use_cuda=False, epsilon=0.05,
+    def __init__(self, feature_types, use_cuda=False, epsilon=0.05,
                  exploration_factor=1,
                 max_depth=6, n_estimators=100,
-                eta=0.3, gamma=1, xgb_lambda=1):
+                eta=0.03, gamma=0.1, xgb_lambda=0.1):
         logger.info("initializing agent")
         self.t = 1
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.observation_history = []
         self.rewards = []
-        self.feature_types = ['q' for _ in range(1)]+['c' for _ in range(23)] #TODO maybe make these available from read_data.py
+        self.feature_types = feature_types
+        logger.debug("self.feature_types="+str(self.feature_types))
+        logger.debug("self.feature_types length="+str(len(self.feature_types)))
         self.lr = eta
         self.actions = []
         self.exploration_factor = exploration_factor
@@ -85,7 +87,7 @@ class TETS(Agent):
         self.observation_history.append(observation)
         self.rewards.append(reward)
         # add some if-statement to avoid training model at each iteration
-        if self.t==99 or self.t%100==0:
+        if self.t==14 or self.t%100==0:
             self.train_model(self.observation_history,self.rewards)
         self.t += 1
 
@@ -123,7 +125,7 @@ class TETS(Agent):
 
     def pick_action(self, observations):
         arms, _ = observations.shape
-        if (self.t<100): #initial random pulls
+        if (self.t<15): #initial random pulls
             return random.randint(0,arms-1)
         else: # sample rewards for all possible actions, np.random.choice break ties if more than one option is considered optimal
             logger.debug('observation shape'+str(observations.shape))
@@ -158,7 +160,10 @@ class XGBGreedy(Agent):
     
     def train_model(self, observations, rewards):
         X = np.array(observations)
+        assert self.X.shape[1] == len(self.feature_types)
         y = np.array(rewards).reshape(len(rewards),1)
+        logging.debug('X_observations:'+str(X))
+        logging.debug('y-reshaped:'+str(y))
         Xy = xgb.DMatrix(X, y, feature_types=self.feature_types, enable_categorical=True)
         self.model = xgb.train(params = self.model_parameters, dtrain=Xy, num_boost_round=self.n_estimators)
             

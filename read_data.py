@@ -1,8 +1,10 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from ucimlrepo import fetch_ucirepo
+from utils.setup_logger import logger
 
-def get_data():
+def get_movie_data():
     # Get movie data
     movie_features = ['movie_id',
                             'movie_title',
@@ -48,18 +50,69 @@ def get_data():
     #user_rating_df['timestamp'] = user_rating_df['timestamp'].astype("category")
 
     # Get domestic data
-    user_data = pd.read_csv('ml-100k/u.user', sep='|', header=None,names=['user_id','age','gender','work','zipcode'])
+    user_data = pd.read_csv('ml-100k/u.user', sep='|', header=None,names=['user_id','age','gender','work','zipcode','age_group'])
     user_data.user_id -= 1 # make this column zero-indexed
     user_data['user_id'] = user_data['user_id'].astype("category").cat.codes.astype(int)
-    user_data['age'] = user_data['age'].astype(int)
+    #user_data['age'] = user_data['age'].astype(int)
     user_data["age_group"] = pd.cut(x=user_data['age'], bins=[0,20,40,60,100], labels=["young","middle_aged","golden_age","old_but_gold"])
     user_data["age_group"] = user_data["age_group"].astype("category").cat.codes.astype(int)
+    user_data=user_data.drop(columns='age') 
     user_data['gender'] = user_data['gender'].astype("category").cat.codes.astype(int)
     user_data['work'] = user_data['work'].astype("category").cat.codes.astype(int)
     user_data['zipcode'] = user_data['zipcode'].astype(str).str[0]
     user_data['zipcode'] = user_data['zipcode'].astype("category").cat.codes.astype(int)
-    allowed_zips = [str(i) for i in range(10)]
+    allowed_zips = [i for i in range(10)]
     user_data.loc[~user_data["zipcode"].isin(allowed_zips),"zipcode"]="V"
     user_data['zipcode'] = user_data['zipcode'].astype("category").cat.codes.astype(int)
 
-    return movie_data, user_rating_df, user_data
+    feature_types = ['q' for _ in range(1)]+['c' for _ in range(22)] 
+
+    return movie_data, user_rating_df, user_data, feature_types
+
+def get_mushroom_data():
+    pd.set_option('display.max_columns', None)
+    # fetch dataset 
+    mushroom = fetch_ucirepo(id=73) 
+    # data (as pandas dataframes) 
+    X = mushroom.data.features
+    X['poisonous'] = mushroom.data.targets
+    #Xy = X.append(y, ignore_index=True)
+    #Xy = X
+    X.dropna(subset=['poisonous'])
+
+    #logging.info('Xy0: ' + str(Xy))
+    #Xy = Xy.astype("category").apply(lambda x: x.cat.codes).astype("int64")
+    #logging.info('Xy1: ' + str(Xy))
+    #Xy = Xy[Xy['poisonous'] >= 0]
+
+    X['stalk-root'] = X['stalk-root'].fillna('m')  #'m' for missing
+
+    #X.fillna('na', inplace=True)
+    X = X.astype("category").apply(lambda x: x.cat.codes).astype(int)
+    #X = X + 1
+    #X = X.replace(-1, np.NaN)
+    #X = X.replace(-1, 0)
+    
+    # metadata 
+    #print(mushroom.metadata) 
+    
+    # variable information 
+    #print(mushroom.variables) 
+    null_mask = X.isnull().any(axis=1)
+    null_rows = X[null_mask]
+
+    logger.info('null_rows: ' + str(null_rows))
+
+    minMax = X.agg([min, max])
+
+    logger.info('minMax: ' + str(minMax))
+
+    logger.info('X: ' + str(X))
+    #logging.info('Xy2: ' + str(Xy))
+
+    set_classes = X["poisonous"].unique()
+    n_classes = len(set_classes)
+    n_features = X.shape[1] - 1
+    feature_types = ['c' for i in range(23)]
+
+    return X, feature_types
