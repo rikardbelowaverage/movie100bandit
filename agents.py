@@ -13,7 +13,7 @@ class TETS(Agent):
     def __init__(self, feature_types, use_cuda=False, epsilon=0.05,
                  exploration_factor=1,
                 max_depth=6, n_estimators=100,
-                eta=0.03, gamma=0.1, xgb_lambda=0.1):
+                eta=0.03, gamma=0, xgb_lambda=0):
         logger.info("initializing agent")
         self.t = 1
         self.n_estimators = n_estimators
@@ -79,7 +79,7 @@ class TETS(Agent):
                 #print("leaf_variance:"+str(row['residual'] * self.lr**2))
 
         end = time.time()
-        logger.info("model trained in {:.3} seconds".format(end-start))
+        logger.info("model trained in {:.3} seconds in timestep {}".format((end-start),self.t))
             
     def update_observations(self, observation, action, reward):
         logger.debug("Observation is"+str(observation))
@@ -87,8 +87,12 @@ class TETS(Agent):
         self.observation_history.append(observation)
         self.rewards.append(reward)
         # add some if-statement to avoid training model at each iteration
-        if self.t==14 or self.t%100==0:
+        if (self.t==14 or self.t%100==0) and self.t<5000:
             self.train_model(self.observation_history,self.rewards)
+        # TODO dump array of observations and rewards.
+        if self.t==25000:
+            np.save('X.dat', self.X)
+            np.save('y.dat',self.y)
         self.t += 1
 
     def get_samples(self, X):

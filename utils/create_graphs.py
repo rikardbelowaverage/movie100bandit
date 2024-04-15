@@ -8,4 +8,5 @@ def regret_plot(timesteps,regrets,result_path):
     plt.clf()
 
     plt.plot(ts,np.cumsum(regrets))
+    plt.grid()
     plt.savefig(result_path+'/cum_regret.png')

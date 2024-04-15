@@ -1,3 +1,7 @@
 *.sh
 *.log
 __pycache__/
+*.out
+results/
+figs/
+*.npy

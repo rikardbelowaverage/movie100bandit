@@ -42,6 +42,10 @@ if __name__ == "__main__":
             current_user = sampled_users.iloc[t]
             current_user_ratings = df_user_ratings.loc[df_user_ratings['user_id']==current_user.user_id]
             current_user_rated_movies = df_movies[df_movies['movie_id'].isin(current_user_ratings.movie_id.values)]
+            logger.debug(current_user_rated_movies)
+            logger.debug(df_user_ratings)
+            logger.debug(df_movies)
+            
 
             if (len(current_user_rated_movies)<=1):
                 logger.info("Resampling a new user")
@@ -52,16 +56,28 @@ if __name__ == "__main__":
         user_features = current_user.drop(index=('user_id'))
 
         # Get contextual data regarding all movies rated by current_user
-        action_features = current_user_rated_movies.drop(columns=['movie_title','release_date'])
+        action_features = current_user_rated_movies.drop(columns=['release_date'])
         # Gets all ratings which will serve as the ground truth when comparing the recommendations
         ratings = current_user_ratings.rating.values
         rows, columns = action_features.shape
-
+        #logger.info(action_features.columns)
+        #logger.info(user_features.columns)
         # X presents the possible actions to the agent
         X = np.concatenate((action_features,np.tile(user_features,(rows,1))), axis=1)
+        #logger.info(X[0,:])
+        X[:, [1, 25]] = X[:, [25, 1]]
+        #logger.info('X-datatypes:'+str(X.dtype))
+        #logger.info(X[0,:])
+        #X = np.concatenate((np.tile(user_features,(rows,1)),action_features), axis=1)
         # y are the rewards for each actions, not presented to the agent.
         y = ratings.reshape(rows,1)
+        logger.debug(str(y))
         logger.debug("X.shape is:"+str(X.shape))
+        logger.debug('y-shape is:'+str(y.shape))
+        logger.debug(X[0,:])
+        logger.debug(user_features)
+        logger.debug(action_features)
+        #X[:,0]=y.ravel()
         action = model.pick_action(observations=X)
         logger.debug('Action:'+str(action))
         model.update_observations(observation=X[action,:],action=action,reward=y[action])
